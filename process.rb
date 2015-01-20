@@ -1,26 +1,38 @@
-require 'open-uri'
-require 'zlib'
-require 'yajl'
+require 'rubygems'
+require 'date'
+require 'yaml'
+require 'big_query'
 require 'pry'
-require 'json/ext'
 
-gz = open('http://data.githubarchive.org/2015-01-01-19.json.gz')
-js = Zlib::GzipReader.new(gz).read
+## Read app credentials from a file
+credentials = YAML.load_file('credentials.yml')
 
-top_watched = Hash.new
-grossing_repos = Hash.new
-starred_repo = Hash.new
+opts = {}
+opts['client_id']     = credentials['client_id']
+opts['service_email'] = credentials['service_account_email']
+opts['key']           = credentials['key_file']
+opts['project_id']    = credentials['project_id']
+opts['dataset']       = credentials['dataset']
 
-# name repo | count today starred | language JavaScript
-# description
-Yajl::Parser.parse(js) do |event|
-   if event["payload"]["action"] == "started"
-        if starred_repo.has_key?(event["repo"]["name"])
-            starred_repo[event["repo"]["name"]][:starred] += 1
-        else
-            starred_repo[event["repo"]["name"]] = {:name => event["repo"]["name"], :starred => 1, :url => event["repo"]["url"]}
-        end    
-   end
-end
+prev_day = (DateTime.now - 1).strftime('%Y%m%d')
+bq = BigQuery::Client.new(opts)
+result = bq.query("SELECT repo.id, repo.name, COUNT(*) as starringCount FROM #{opts['dataset']}.events_#{prev_day} WHERE type = 'WatchEvent' GROUP BY repo.id, repo.name ORDER BY starringCount DESC LIMIT 50")
 
-File.open("starred.json", 'a+') { |f| f.write(starred_repo.to_json) }
+## TODO Get more info of each repo
+
+print result.to_json
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -19,6 +19,7 @@ bq = BigQuery::Client.new(opts)
 result = bq.query("SELECT repo.id, repo.name, COUNT(*) as starringCount FROM #{opts['dataset']}.events_#{prev_day} WHERE type = 'WatchEvent' GROUP BY repo.id, repo.name ORDER BY starringCount DESC LIMIT 50")
 
 ## TODO Get more info of each repo
+## Ping to mailchimp
 
 print result.to_json
 

@@ -18,6 +18,7 @@ TOPWATCHED_CACHE = "topwatched_#{yesterday}.cache"
 credentials = YAML.load_file('credentials.yml')
 MAILCHIMP_API_KEY = credentials['mailchimp_api']
 MAILCHIMP_LIST = credentials['mailchimp_list']
+personal_token = credentials['github_personal_token']
 
 top_new_repos = <<-SQL
 SELECT repo.id, repo.name, COUNT(repo.name) as starringCount 
@@ -54,7 +55,9 @@ def run_query(q)
 end
 
 def read_api(url)
+  auth = {username: "#{personal_token}", password: "x-oauth-basic"}
   options = { 
+    :basic_auth => auth,
     :headers => { 'User-Agent' => 'hnq90', 'Content-Type' => 'application/json', 'Accept' => 'application/json'}
   }
   response = HTTParty.get(url, options)
@@ -87,8 +90,8 @@ def send_email(title, html)
     :html => html.to_s.encode('ascii', 'binary', :invalid => :replace, :undef => :replace, :replace => '')
   })
 
-  mailchimp.send campaign
-  mailchimp.campaigns.delete campaign
+  mailchimp.campaigns.send campaign['id']
+  # mailchimp.campaigns.delete campaign['id']
 end
 
 def read_cache(file, query)
@@ -107,11 +110,7 @@ def read_cache(file, query)
 end
 
 today = Time.now.strftime('%b %d')
-github = Github.new
-
 topwatched =  read_cache(TOPWATCHED_CACHE, top_watched_repos)
 topnew = read_cache(TOPNEW_CACHE, top_new_repos)
-
 output = template.result(binding)
-
 puts "Sending top new & watched: " + send_email("GitHub Archive: Top new & watched repos - #{today}", output).to_s

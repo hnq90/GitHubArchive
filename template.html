@@ -246,7 +246,7 @@
 <h4 style="color: #C60000;display: block;font-family: Helvetica;font-size: 16px;font-weight: bold;line-height: 100%;margin-top: 0;margin-right: 0;margin-bottom: 15px;margin-left: 0;text-align: left;">Top New Repositories</h4>
 
 <% topnew.each do |repo| %>
-  &bull; <a href="<%= repo['url'] %>"><%= repo['name'] %></a> &nbsp;&nbsp;+<span style="font-size:80%"><%= repo['starringCount'] %>/<%= repo['total_count'] %>, <%= repo['lang'] %></span><br><div style="font-size:80%;margin-bottom:5px;margin-left:10px"><%= repo['desc'] %></div>                                         <% end %>
+  &bull; <a href="<%= repo['url'] %>"><%= repo['name'] %></a> &nbsp;&nbsp;+<span style="font-size:80%"><%= repo['starringCount'] %>, <%= repo['lang'] %></span><br><div style="font-size:80%;margin-bottom:5px;margin-left:10px"><%= repo['desc'] %></div>                                         <% end %>
 
 <h4 style="color: #C60000;display: block;font-family: Helvetica;font-size: 16px;font-weight: bold;line-height: 100%;margin-top: 0;margin-right: 0;margin-bottom: 15px;margin-top:30px;margin-left: 0;text-align: left;">Top Watched Repositories</h4>
 

@@ -1,14 +1,23 @@
-require 'hominid'
+require 'mailchimp'
 require 'json'
 require 'erb'
 require 'httparty'
 require 'rubygems'
 require 'date'
+require 'yaml'
+require 'github_api'
 require 'pry'
 
-yesterday = (DateTime.now - 1).strftime('%Y%m%d')
 template = ERB.new IO.read('template.html')
+yesterday = (DateTime.now - 1).strftime('%Y%m%d')
 yesterday_dataset = "githubarchive:day.events_#{yesterday}"
+TOPNEW_CACHE = "topnew_#{yesterday}.cache"
+TOPWATCHED_CACHE = "topwatched_#{yesterday}.cache"
+
+## Read app credentials from a file
+credentials = YAML.load_file('credentials.yml')
+MAILCHIMP_API_KEY = credentials['mailchimp_api']
+MAILCHIMP_LIST = credentials['mailchimp_list']
 
 top_new_repos = <<-SQL
 SELECT repo.id, repo.name, COUNT(repo.name) as starringCount 
@@ -39,24 +48,9 @@ ORDER BY starringCount DESC
 LIMIT 25
 SQL
 
-
 def run_query(q)
   q = q.gsub(/\/\*.*/,'').gsub(/'/m,'"').strip
   JSON.parse(`$(which bq) -q --format=prettyjson --credential_file ~/.bigquery.v2.token query '#{q}'`)
-end
-
-def send_email(title, html)
-  h = Hominid::API.new(ENV['HOMINID_KEY'])
-  c = h.campaign_create('regular', {
-    :list_id => ENV['HOMINID_LIST'],
-    :subject => title,
-    :from_email => 'huy+gha@huynq.net',
-    :from_name => 'GitHub Archive'
-   },{
-    :html => html.to_s.encode('ascii', 'binary', :invalid => :replace, :undef => :replace, :replace => '')
-  })
-
-  h.campaign_send_now c
 end
 
 def read_api(url)
@@ -82,9 +76,42 @@ def get_repos_info(repo_hashes)
   repos
 end
 
+def send_email(title, html)
+  mailchimp = Mailchimp::API.new(MAILCHIMP_API_KEY)
+  campaign = mailchimp.campaigns.create('regular', {
+    :list_id => MAILCHIMP_LIST,
+    :subject => title,
+    :from_email => 'huy+gha@huynq.net',
+    :from_name => 'GitHub Archive'
+   },{
+    :html => html.to_s.encode('ascii', 'binary', :invalid => :replace, :undef => :replace, :replace => '')
+  })
+
+  mailchimp.send campaign
+  mailchimp.campaigns.delete campaign
+end
+
+def read_cache(file, query)
+  @data = nil
+  if File.exists? file
+    File.open(file) do |file|
+      @data = Marshal.load(file)
+    end
+  else
+    @data = get_repos_info(run_query query)
+    File.open(file, 'w') do |file|
+      Marshal.dump(@data, file)
+    end
+  end
+  @data
+end
+
 today = Time.now.strftime('%b %d')
-topwatched = get_repos_info(run_query top_watched_repos)
-topnew = get_repos_info(run_query top_new_repos)
+github = Github.new
+
+topwatched =  read_cache(TOPWATCHED_CACHE, top_watched_repos)
+topnew = read_cache(TOPNEW_CACHE, top_new_repos)
+
 output = template.result(binding)
 
 puts "Sending top new & watched: " + send_email("GitHub Archive: Top new & watched repos - #{today}", output).to_s

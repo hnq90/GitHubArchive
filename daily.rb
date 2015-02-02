@@ -8,6 +8,7 @@ require 'mailchimp'
 require 'httparty'
 require 'github_api'
 require 'date'
+require 'fileutils'
 require 'pry'
 
 option = OpenStruct.new
@@ -29,7 +30,9 @@ TOPWATCHED_CACHE = "topwatched_#{yesterday}_type_#{option.type}.cache"
 ## Read app credentials from a file
 credentials = YAML.load_file('credentials.yml')
 MAILCHIMP_API_KEY = credentials['mailchimp_api']
-MAILCHIMP_LIST = credentials['mailchimp_list']
+MAILCHIMP_DAILY_LIST = credentials['mailchimp_daily_list']
+MAILCHIMP_3DAYS_LIST = credentials['mailchimp_3days_list']
+MAILCHIMP_WEEKLY_LIST = credentials['mailchimp_weekly_list']
 PERSONAL_TOKEN = credentials['github_personal_token']
 
 if option.type == '1'
@@ -38,6 +41,7 @@ if option.type == '1'
   T
   time_range = "#{today}"
   title = "GitHub Archive: Top new & watched repos - " << time_range
+  list = MAILCHIMP_DAILY_LIST
 elsif option.type == '2'
   dataset = <<-T
   (TABLE_DATE_RANGE(githubarchive:day.events_,
@@ -47,22 +51,27 @@ elsif option.type == '2'
   T
   time_range = "(#{(DateTime.now - 3).strftime('%b %d')} - #{today})"
   title = "GitHub Archive: Top new & watched repos - " << time_range
+  list = MAILCHIMP_3DAYS_LIST
 elsif option.type == '3'
   dataset = <<-T
-  (TABLE_DATE_RANGE(day.events_,
+  (TABLE_DATE_RANGE(githubarchive:day.events_,
     TIMESTAMP('#{sevendays_ago}'),
     TIMESTAMP('#{yesterday_ts}')
   ))
   T
   time_range = "(#{(DateTime.now - 7).strftime('%b %d')} - #{today})"
   title = "GitHub Archive: Top new & watched repos - " << time_range
+  list = MAILCHIMP_WEEKLY_LIST
 end
 
 top_new_repos = <<-SQL
-SELECT repo.id, repo.name, COUNT(repo.name) as starringCount
-FROM #{dataset}
-WHERE type = 'WatchEvent'
-  AND repo.id IN (
+SELECT repo.id, repo.name, type, COUNT( repo.name) as starringCount
+FROM (
+  SELECT repo.id, repo.name, type
+  FROM #{dataset}
+  WHERE type = 'WatchEvent' 
+)
+WHERE repo.id IN (
     SELECT repo.id FROM (
       SELECT repo.id,
         JSON_EXTRACT(payload, '$.ref_type') as ref_type,
@@ -71,10 +80,10 @@ WHERE type = 'WatchEvent'
     )
     WHERE ref_type CONTAINS 'repository'
   )
-GROUP BY repo.id, repo.name
+GROUP BY repo.id, repo.name, type
 HAVING starringCount >= 5
 ORDER BY starringCount DESC
-LIMIT 25
+LIMIT 25;
 SQL
 
 top_watched_repos = <<-SQL
@@ -117,10 +126,10 @@ def get_repos_info(repo_hashes)
   repos
 end
 
-def send_email(title, html)
+def send_email(title, html, list)
   mailchimp = Mailchimp::API.new(MAILCHIMP_API_KEY)
   campaign = mailchimp.campaigns.create('regular', {
-    :list_id => MAILCHIMP_LIST,
+    :list_id => list,
     :subject => title,
     :from_email => 'huy+gha@huynq.net',
     :from_name => 'GitHub Archive'
@@ -133,6 +142,8 @@ end
 
 def read_cache(file, query)
   @data = nil
+  FileUtils::mkdir_p 'cached'
+  file = 'cached/' << file
   if File.exists? file
     File.open(file) do |file|
       @data = Marshal.load(file)
@@ -149,4 +160,4 @@ end
 topwatched =  read_cache(TOPWATCHED_CACHE, top_watched_repos)
 topnew = read_cache(TOPNEW_CACHE, top_new_repos)
 output = template.result(binding)
-puts "Sending top new & watched: " + send_email(title, output).to_s
+puts "Sending top new & watched: " + send_email(title, output, list).to_s

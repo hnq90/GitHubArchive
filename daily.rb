@@ -13,7 +13,7 @@ require 'pry'
 
 option = OpenStruct.new
 OptionParser.new do |opt|
-  opt.on('-f', '--type TYPE', '1 - daily / 2 - 3 days / 3 - weekly') { |o| option.type = o }
+  opt.on('-t', '--type TYPE', '1 - daily / 2 - 3 days / 3 - weekly') { |o| option.type = o }
 end.parse!
 
 ## Common variables

@@ -1,51 +1,89 @@
-require 'mailchimp'
+require 'rubygems'
+require 'optparse'
+require 'ostruct'
+require 'yaml'
 require 'json'
 require 'erb'
+require 'mailchimp'
 require 'httparty'
-require 'rubygems'
-require 'date'
-require 'yaml'
 require 'github_api'
+require 'date'
 require 'pry'
 
+option = OpenStruct.new
+OptionParser.new do |opt|
+  opt.on('-f', '--type TYPE', '1 - daily / 2 - 3 days / 3 - weekly') { |o| option.type = o }
+end.parse!
+
+## Common variables
 template = ERB.new IO.read('template.html')
+time_format = '%Y-%m-%d'
+today = Time.now.strftime('%b %d')
 yesterday = (DateTime.now - 1).strftime('%Y%m%d')
-yesterday_dataset = "githubarchive:day.events_#{yesterday}"
-TOPNEW_CACHE = "topnew_#{yesterday}.cache"
-TOPWATCHED_CACHE = "topwatched_#{yesterday}.cache"
+yesterday_ts = (DateTime.now - 1).strftime(time_format)
+threedays_ago = (DateTime.now - 3).strftime(time_format)
+sevendays_ago = (DateTime.now - 7).strftime(time_format)
+TOPNEW_CACHE = "topnew_#{yesterday}_type_#{option.type}.cache"
+TOPWATCHED_CACHE = "topwatched_#{yesterday}_type_#{option.type}.cache"
 
 ## Read app credentials from a file
 credentials = YAML.load_file('credentials.yml')
 MAILCHIMP_API_KEY = credentials['mailchimp_api']
 MAILCHIMP_LIST = credentials['mailchimp_list']
-personal_token = credentials['github_personal_token']
+PERSONAL_TOKEN = credentials['github_personal_token']
+
+if option.type == '1'
+  dataset = <<-T
+  githubarchive:day.events_#{yesterday}
+  T
+  time_range = "#{today}"
+  title = "GitHub Archive: Top new & watched repos - " << time_range
+elsif option.type == '2'
+  dataset = <<-T
+  (TABLE_DATE_RANGE(githubarchive:day.events_,
+    TIMESTAMP('#{threedays_ago}'),
+    TIMESTAMP('#{yesterday_ts}')
+  ))
+  T
+  time_range = "(#{(DateTime.now - 3).strftime('%b %d')} - #{today})"
+  title = "GitHub Archive: Top new & watched repos - " << time_range
+elsif option.type == '3'
+  dataset = <<-T
+  (TABLE_DATE_RANGE(day.events_,
+    TIMESTAMP('#{sevendays_ago}'),
+    TIMESTAMP('#{yesterday_ts}')
+  ))
+  T
+  time_range = "(#{(DateTime.now - 7).strftime('%b %d')} - #{today})"
+  title = "GitHub Archive: Top new & watched repos - " << time_range
+end
 
 top_new_repos = <<-SQL
-SELECT repo.id, repo.name, COUNT(repo.name) as starringCount 
-FROM #{yesterday_dataset}
-WHERE type = 'WatchEvent' 
+SELECT repo.id, repo.name, COUNT(repo.name) as starringCount
+FROM #{dataset}
+WHERE type = 'WatchEvent'
   AND repo.id IN (
     SELECT repo.id FROM (
-      SELECT repo.id, 
+      SELECT repo.id,
         JSON_EXTRACT(payload, '$.ref_type') as ref_type,
-      FROM #{yesterday_dataset}
+      FROM #{dataset}
       WHERE type='CreateEvent'
     )
     WHERE ref_type CONTAINS 'repository'
   )
 GROUP BY repo.id, repo.name
 HAVING starringCount >= 5
-ORDER BY starringCount DESC 
+ORDER BY starringCount DESC
 LIMIT 25
 SQL
 
 top_watched_repos = <<-SQL
-SELECT repo.id, repo.name, COUNT(repo.name) as starringCount 
-FROM #{yesterday_dataset}
-WHERE type = 'WatchEvent' 
+SELECT repo.id, repo.name, COUNT(repo.name) as starringCount
+FROM #{dataset}
+WHERE type = 'WatchEvent'
 GROUP BY repo.id, repo.name
 HAVING starringCount >= 10
-ORDER BY starringCount DESC 
+ORDER BY starringCount DESC
 LIMIT 25
 SQL
 
@@ -55,13 +93,13 @@ def run_query(q)
 end
 
 def read_api(url)
-  auth = {username: "#{personal_token}", password: "x-oauth-basic"}
-  options = { 
+  auth = {username: PERSONAL_TOKEN, password: "x-oauth-basic"}
+  options = {
     :basic_auth => auth,
     :headers => { 'User-Agent' => 'hnq90', 'Content-Type' => 'application/json', 'Accept' => 'application/json'}
   }
   response = HTTParty.get(url, options)
-  return JSON.parse(response.body)
+  JSON.parse(response.body)
 end
 
 def get_repos_info(repo_hashes)
@@ -91,7 +129,6 @@ def send_email(title, html)
   })
 
   mailchimp.campaigns.send campaign['id']
-  # mailchimp.campaigns.delete campaign['id']
 end
 
 def read_cache(file, query)
@@ -109,8 +146,7 @@ def read_cache(file, query)
   @data
 end
 
-today = Time.now.strftime('%b %d')
 topwatched =  read_cache(TOPWATCHED_CACHE, top_watched_repos)
 topnew = read_cache(TOPNEW_CACHE, top_new_repos)
 output = template.result(binding)
-puts "Sending top new & watched: " + send_email("GitHub Archive: Top new & watched repos - #{today}", output).to_s
+puts "Sending top new & watched: " + send_email(title, output).to_s

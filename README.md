@@ -9,3 +9,5 @@ GitHub Archive Newsletters
 
 ## Have any suggestion?
 Create new issue [here](https://github.com/hnq90/GitHubArchive/issues)
+
+[![forthebadge](http://forthebadge.com/images/badges/validated-html2.svg)](http://forthebadge.com)

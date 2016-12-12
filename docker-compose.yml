@@ -1,0 +1,25 @@
+version: '2'
+
+services:
+  mariadb_master:
+    networks:
+      - back
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    container_name: github_archive
+    build: .
+    environment:
+      TERM: linux
+    restart: on-failure:3
+    volumes:
+      - ./:/usr/src/app
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+networks:
+  back:
+    driver: bridge

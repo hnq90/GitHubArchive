@@ -69,7 +69,7 @@ SELECT repo.id, repo.name, type, COUNT( repo.name) as starringCount
 FROM (
   SELECT repo.id, repo.name, type
   FROM #{dataset}
-  WHERE type = 'WatchEvent' 
+  WHERE type = 'WatchEvent'
 )
 WHERE repo.id IN (
     SELECT repo.id FROM (
@@ -145,13 +145,13 @@ def read_cache(file, query)
   FileUtils::mkdir_p 'cached'
   file = 'cached/' << file
   if File.exists? file
-    File.open(file) do |file|
-      @data = Marshal.load(file)
+    File.open(file) do |f|
+      @data = Marshal.load(f)
     end
   else
     @data = get_repos_info(run_query query)
-    File.open(file, 'w') do |file|
-      Marshal.dump(@data, file)
+    File.open(file, 'w') do |f|
+      Marshal.dump(@data, f)
     end
   end
   @data

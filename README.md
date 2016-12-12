@@ -1,6 +1,3 @@
-[2015-12] Goal: $10/month for Linode VPS
-[![](https://img.shields.io/badge/donate-$5-brightgreen.svg)](https://www.bountysource.com/cart?amount=5&currency=USD&team_id=githubarchive-newsletter)
-
 # GitHub Archive
 GitHub Archive Newsletters
 
